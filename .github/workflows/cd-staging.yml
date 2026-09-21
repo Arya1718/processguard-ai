@@ -1,0 +1,71 @@
+name: CD — Staging Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**"
+      - ".github/workflows/cd-staging.yml"
+    # Only run staging deploy when CI succeeded (workflow_run not needed;
+    # GitHub Actions branch protection requires CI checks to pass).
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  staging-deploy:
+    name: Deploy to staging (Docker Compose)
+    runs-on: ubuntu-latest
+    # Run only after all CI checks pass (branch protection rule enforces this)
+    # Also require manual trigger for re-deploying without code changes
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: staging
+
+      - name: Build and push staging images
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            build
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            push
+
+      - name: Deploy to staging host
+        env:
+          SSH_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
+          SSH_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.STAGING_DEPLOY_PATH }}
+        run: |
+          # Copy compose files + .env.staging to the staging host
+          mkdir -p deploy
+          cp docker-compose.yml docker-compose.staging.yml deploy/
+          cp .env.staging deploy/.env
+          
+          # Deploy via SSH
+          ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_USER@$SSH_HOST" \
+            "cd $DEPLOY_PATH && \
+             docker login $REGISTRY -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} && \
+             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+             pull && \
+             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+             up -d --remove-orphans"

@@ -1,0 +1,286 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "ProcessGuard AI — Observability",
+    "tags": ["processguard", "observability"],
+    "timezone": "utc",
+    "schemaVersion": 39,
+    "version": 1,
+    "refresh": "15s",
+    "panels": [
+      {
+        "id": 1,
+        "type": "stat",
+        "title": "Active Incidents",
+        "gridPos": { "x": 0, "y": 0, "w": 4, "h": 5 },
+        "targets": [
+          {
+            "expr": "count by (status) (incidents_by_status)",
+            "legendFormat": "{{status}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": { "mode": "thresholds" },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "type": "stat",
+        "title": "5xx Error Rate (5m)",
+        "gridPos": { "x": 4, "y": 0, "w": 4, "h": 5 },
+        "targets": [
+          {
+            "expr": "sum(rate(http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "percentunit" }
+        }
+      },
+      {
+        "id": 3,
+        "type": "stat",
+        "title": "Redis Stream Lag",
+        "gridPos": { "x": 8, "y": 0, "w": 4, "h": 5 },
+        "targets": [
+          {
+            "expr": "max(pgai_redis_stream_lag)",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "short" }
+        }
+      },
+      {
+        "id": 4,
+        "type": "stat",
+        "title": "Root-Cause Agent Success Rate",
+        "gridPos": { "x": 12, "y": 0, "w": 4, "h": 5 },
+        "targets": [
+          {
+            "expr": "sum(rate(pgai_agent_outcomes_total{agent=\"root_cause\",outcome=\"accepted\"}[1h])) / sum(rate(pgai_agent_outcomes_total{agent=\"root_cause\"}[1h]))",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "percentunit" }
+        }
+      },
+      {
+        "id": 5,
+        "type": "stat",
+        "title": "Total LLM Cost (24h)",
+        "gridPos": { "x": 16, "y": 0, "w": 4, "h": 5 },
+        "targets": [
+          {
+            "expr": "sum(increase(pgai_llm_cost_usd_total[24h]))",
+            "format": "time_series",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "currencyUSD", "decimals": 2 }
+        }
+      },
+      {
+        "id": 6,
+        "type": "graph",
+        "title": "HTTP Request Latency (p50/p95/p99)",
+        "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "seconds", "decimals": 3 }
+        }
+      },
+      {
+        "id": 7,
+        "type": "graph",
+        "title": "Request Rate by Endpoint",
+        "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (path) (rate(http_requests_total[5m]))",
+            "legendFormat": "{{path}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "reqps", "decimals": 2 }
+        }
+      },
+      {
+        "id": 8,
+        "type": "graph",
+        "title": "Agent Stage Duration (p50/p95/p99)",
+        "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(pgai_agent_stage_duration_seconds_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(pgai_agent_stage_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(pgai_agent_stage_duration_seconds_bucket[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "seconds", "decimals": 2 }
+        }
+      },
+      {
+        "id": 9,
+        "type": "graph",
+        "title": "EventBus Publish/Consume by Topic",
+        "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (topic) (rate(pgai_eventbus_publish_total[5m]))",
+            "legendFormat": "{{topic}} (publish)",
+            "refId": "A"
+          },
+          {
+            "expr": "sum by (topic) (rate(pgai_eventbus_consume_total[5m]))",
+            "legendFormat": "{{topic}} (consume)",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "ops", "decimals": 2 }
+        }
+      },
+      {
+        "id": 10,
+        "type": "graph",
+        "title": "LLM Tokens by Agent (5m rate)",
+        "gridPos": { "x": 0, "y": 21, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (agent) (rate(pgai_llm_tokens_total_total[5m]))",
+            "legendFormat": "{{agent}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "short" }
+        }
+      },
+      {
+        "id": 11,
+        "type": "graph",
+        "title": "LLM Cost Rate by Agent (5m)",
+        "gridPos": { "x": 12, "y": 21, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (agent) (rate(pgai_llm_cost_usd_total[5m]))",
+            "legendFormat": "{{agent}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "currencyUSD", "decimals": 4 }
+        }
+      },
+      {
+        "id": 12,
+        "type": "graph",
+        "title": "Root-Cause Confidence Distribution",
+        "gridPos": { "x": 0, "y": 29, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(pgai_root_cause_confidence_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(pgai_root_cause_confidence_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "percent", "decimals": 1 }
+        }
+      },
+      {
+        "id": 13,
+        "type": "graph",
+        "title": "EventBus Handler Errors by Topic",
+        "gridPos": { "x": 12, "y": 29, "w": 12, "h": 8 },
+        "targets": [
+          {
+            "expr": "sum by (topic) (rate(pgai_eventbus_handler_errors_total[5m]))",
+            "legendFormat": "{{topic}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": { "unit": "ops", "decimals": 2 }
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "agent",
+          "type": "query",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "definition": "label_values(pgai_agent_outcomes_total, agent)",
+          "includeId": true,
+          "multi": false,
+          "refresh": 1,
+          "current": { "selected": false, "text": "All", "value": "$__all" }
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "enable": true,
+          "expr": "{{ $values._all | str.Contains \"error\" | if }}",
+          "name": "Errors"
+        }
+      ]
+    }
+  },
+  "folder": "ProcessGuard AI",
+  "message": "Initial ProcessGuard AI observability dashboard (Prompt 9)",
+  "overwrite": false
+}

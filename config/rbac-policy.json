@@ -1,0 +1,40 @@
+{
+  "_doc": [
+    "Role-to-capability policy (Prompt 7) -- SINGLE SOURCE OF TRUTH.",
+    "The .NET middleware loads this file to build ASP.NET Core authorization",
+    "policies; the Python agent-service loads the SAME file to re-check the",
+    "approval-level rule as a second layer. Keep one copy; the demo mounts it",
+    "into both containers (see docker-compose.yml + docs/rbac-policy.md).",
+    "",
+    "site_scope: 'single' means the user's site_id claim gates every incident",
+    "query -- a Site 07 user requesting Site 12 data is rejected server-side.",
+    "",
+    "max_approval_level: the highest HITL level this role may decide.",
+    "  Operator             -> 0 (cannot approve/reject at any level)",
+    "  MaintenanceEngineer  -> 2 (can decide Level 2 'Recommend')",
+    "  PlantManager         -> 3 (can decide Level 2 AND Level 3 'Controlled Action')",
+    "",
+    "ENFORCED INDEPENDENTLY BY BOTH SERVICES (defense in depth): the .NET",
+    "policy handler returns 403 before the call leaves the middleware; the",
+    "Python decision endpoints re-validate role + level + site from the",
+    "forwarded token. Neither layer is the only check."
+  ],
+  "roles": {
+    "Operator": {
+      "max_approval_level": 0,
+      "description": "View own-site incidents, evidence, root cause, risk, recommendations; use the Why? chat. Cannot approve or reject."
+    },
+    "MaintenanceEngineer": {
+      "max_approval_level": 2,
+      "description": "Everything an Operator can do, plus approve/reject HITL Level 2 recommendations for their own site."
+    },
+    "PlantManager": {
+      "max_approval_level": 3,
+      "description": "Everything a MaintenanceEngineer can do, plus approve/reject HITL Level 3 (Controlled Action) recommendations for their own site."
+    }
+  },
+  "incident_read_roles": ["Operator", "MaintenanceEngineer", "PlantManager"],
+  "chat_roles": ["Operator", "MaintenanceEngineer", "PlantManager"],
+  "resolve_roles": ["MaintenanceEngineer", "PlantManager"],
+  "simulator_roles": ["MaintenanceEngineer", "PlantManager"]
+}

@@ -1,0 +1,43 @@
+{
+  "_doc": [
+    "HITL gating configuration (Prompt 4). Loaded by the Risk Agent; tune",
+    "without a code change. See docs/hitl-thresholds.md for the full matrix",
+    "and the safety-floor rationale.",
+    "",
+    "Levels: 1 = inform only (auto_informed), 2 = recommend (awaiting_approval),",
+    "3 = controlled action (awaiting_approval + justification on rejection + full audit).",
+    "",
+    "SAFETY DESIGN: the table gives a BASE level from severity; low confidence",
+    "can only RAISE it (floors below). Ambiguity never lowers the gating tier."
+  ],
+  "severity_to_base_level": {
+    "low": 1,
+    "medium": 2,
+    "high": 2
+  },
+  "confidence_floor": {
+    "_doc": "If diagnosis confidence is below a threshold, the level is at least the corresponding minimum.",
+    "default_when_missing": 0,
+    "rules": [
+      { "below": 50, "minimum_level": 3 },
+      { "below": 70, "minimum_level": 2 }
+    ]
+  },
+  "safety_floor": {
+    "_doc": "High severity + uncertain diagnosis always requires review.",
+    "high_severity_confidence_below": 85,
+    "minimum_level": 2
+  },
+  "severity_thresholds": {
+    "_doc": "Detection scores -> risk severity. static_margin_high = overshoot fraction of band that counts as 'high'; drift_z_high likewise for baseline sigmas. medium_fraction = normalized worst score for medium.",
+    "static_margin_high": 1.0,
+    "drift_z_high": 10.0,
+    "medium_fraction": 0.3
+  },
+  "consequence_amplifiers": {
+    "equipment damage": "mechanical degradation signature present (vibration/pump condition)",
+    "production loss": "cooling capacity or flow shortfall affects process output",
+    "chemical imbalance": "water chemistry outside normal operating band",
+    "unplanned shutdown": "failure mode can escalate to loss of the cooling loop"
+  }
+}

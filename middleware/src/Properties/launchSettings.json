@@ -1,0 +1,19 @@
+{
+  "profiles": {
+    "middleware": {
+      "commandName": "Project",
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:8080",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "PGAI_JWT__SIGNINGKEY": "dev-only-signing-key-change-me-0123456789abcdef",
+        "PGAI_JWT__ISSUER": "processguard-dev",
+        "PGAI_JWT__AUDIENCE": "processguard-api",
+        "PGAI_JWT__ACCESSMINUTES": "480",
+        "PGAI_CONNECTIONSTRINGS__POSTGRES": "Host=localhost;Port=5432;Database=processguard;Username=pgai;Password=pgai_dev_password",
+        "PGAI_CONNECTIONSTRINGS__REDIS": "localhost:6379",
+        "PGAI_AGENTSERVICE__BASEURL": "http://localhost:8000"
+      }
+    }
+  }
+}

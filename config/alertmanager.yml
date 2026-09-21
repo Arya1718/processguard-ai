@@ -1,0 +1,41 @@
+# AlertManager configuration.
+# Routes alerts to a Slack webhook (configurable) and to a fallback receiver.
+global:
+  resolve_timeout: 5m
+  slack_api_url: "${SLACK_API_URL:-}"
+
+route:
+  group_by: ["alertname", "job"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  receiver: "default"
+  routes:
+    - match:
+        severity: "critical"
+      receiver: "critical"
+    - match:
+        severity: "warning"
+      receiver: "warning"
+
+receivers:
+  - name: "default"
+    webhook_configs:
+      - url: "http://otel-collector:50001/"
+        send_resolved: true
+
+  - name: "critical"
+    slack_configs:
+      - api_url: "${SLACK_API_URL:-http://localhost:0000}"
+        channel: "${SLACK_CHANNEL:-#processguard-alerts}"
+        title: "[CRITICAL] {{ .CommonLabels.alertname }}"
+        text: "{{ .CommonAnnotations.description }}"
+        send_resolved: true
+
+  - name: "warning"
+    slack_configs:
+      - api_url: "${SLACK_API_URL:-http://localhost:0000}"
+        channel: "${SLACK_CHANNEL:-#processguard-alerts}"
+        title: "[WARNING] {{ .CommonLabels.alertname }}"
+        text: "{{ .CommonAnnotations.description }}"
+        send_resolved: true

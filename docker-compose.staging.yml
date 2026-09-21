@@ -1,0 +1,95 @@
+# Staging environment overrides for ProcessGuard AI.
+# Used by CI/CD: docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+# Pulls images from ghcr.io (built and pushed by the CD pipeline).
+
+services:
+  middleware:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/middleware:staging-${GITHUB_SHA:-latest}
+    build: null
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+
+  agent-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/agent-service:staging-${GITHUB_SHA:-latest}
+    build: null
+    ports:
+      - "8001:8000"
+    environment:
+      PGAI_OTEL__DISABLE: "false"
+
+  simulator:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/agent-service:staging-${GITHUB_SHA:-latest}
+    build: null
+    command: ["--simulator-only"]
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/frontend:staging-${GITHUB_SHA:-latest}
+    build: null
+    ports:
+      - "5173:8080"
+
+  mock-erp-cmms:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/mock-erp-cmms:staging-${GITHUB_SHA:-latest}
+    build: null
+
+  # Staging uses the same observability stack as dev
+  otel-collector:
+    image: otel/opentelemetry-collector:0.110.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting:/etc/prometheus/rules:ro
+    networks:
+      - internal
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=168h"
+      - "--web.enable-lifecycle"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting:/etc/prometheus/rules:ro
+    networks:
+      - internal
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DATASOURCES_DEFAULTS_URL: http://prometheus:9090
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - internal
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - alertmanager-data:/alertmanager
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - internal
+    depends_on:
+      - prometheus

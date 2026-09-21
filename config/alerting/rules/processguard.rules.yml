@@ -1,0 +1,123 @@
+# Prompt 9: Prometheus alerting rules for ProcessGuard AI.
+# These rules surface operational failures as alerts in AlertManager.
+groups:
+  - name: processguard.health
+    rules:
+      # --- Service health ---
+      - alert: MiddlewareDown
+        expr: up{job="processguard-middleware"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ProcessGuard middleware is down"
+          description: "The .NET middleware has been unreachable on :8080/metrics for more than 2 minutes."
+
+      - alert: AgentServiceDown
+        expr: up{job="processguard-agent-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ProcessGuard agent-service is down"
+          description: "The Python agent-service has been unreachable for more than 2 minutes."
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis (pub/sub + streams) is unreachable."
+
+      - alert: PostgresDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres is down"
+          description: "Postgres (incident persistence) is unreachable."
+
+      - alert: OtelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenTelemetry collector is down"
+          description: "The OTel collector is not reachable for trace/metric ingestion."
+
+  - name: processguard.pipeline
+    rules:
+      # --- Pipeline error rate ---
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status_code=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate on middleware"
+          description: "5xx error rate is above 5% for the last 5 minutes."
+
+      # --- Redis Stream consumer lag ---
+      - alert: StreamConsumerLagHigh
+        expr: pgai_redis_stream_lag > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis Stream consumer group lag is high"
+          description: "Sensor-readings stream lag ({{ $value }} messages) exceeds 100 for 5+ minutes."
+
+      # --- Stuck incidents (detection pipeline back-pressure) ---
+      - alert: IncidentsStuckInStatus
+        expr: count by (status) (incidents_by_status) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Too many incidents stuck in {{ $labels.status }}"
+          description: "{{ $value }} incidents are stuck in {{ $labels.status }} for 10+ minutes."
+
+  - name: processguard.agents
+    rules:
+      # --- Agent success rate ---
+      - alert: LowRootCauseSuccessRate
+        expr: rate(pgai_agent_outcomes_total{agent="root_cause",outcome="accepted"}[1h]) / rate(pgai_agent_outcomes_total{agent="root_cause",outcome=~"accepted|needs_human_review|rejected"}[1h]) < 0.80
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Root-Cause Agent success rate below 80%"
+          description: "Less than 80% of root-cause diagnoses are accepted (with cited evidence)."
+
+      - alert: LowRecommendationSuccessRate
+        expr: rate(pgai_agent_outcomes_total{agent="recommendation",outcome="completed"}[1h]) / rate(pgai_agent_outcomes_total{agent="recommendation"}[1h]) < 0.90
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Recommendation Agent success rate below 90%"
+          description: "Less than 90% of recommendation generations complete without hitting max tool rounds."
+
+      # --- LLM token spend spike ---
+      - alert: TokenSpendSpike
+        expr: rate(pgai_llm_cost_usd_total[5m]) > 0.50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM token spend spike detected"
+          description: "Estimated LLM cost is accruing at more than $0.50/min."
+
+      # --- Agent stage latency ---
+      - alert: AgentStageLatencyHigh
+        expr: histogram_quantile(0.95, rate(pgai_agent_stage_duration_seconds_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent stage processing latency above 30s (p95)"
+          description: "One or more agent stages are taking longer than 30 seconds (95th percentile)."

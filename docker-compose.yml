@@ -1,0 +1,390 @@
+# ProcessGuard AI — local development stack.
+# `docker compose up` brings up all eight containers with no manual steps.
+#
+# Azure stand-ins:
+#   postgres -> Azure SQL            redis -> Azure Redis Cache
+#   redis STREAMS -> Azure Event Hub (raw sensor ingestion)
+#   redis pub/sub -> Azure Service Bus (AnomalyDetected events)
+#   agent-service file vector store -> Azure AI Search (extension point only)
+#   mock-erp-cmms -> Buckman's real ERP/CMMS (Prompt 5; internal network only)
+#   oidc-provider -> Microsoft Entra ID (Prompt 7; protocol-compatible stand-in)
+#
+# Values interpolate from the repo-root .env (see .env.example). The defaults
+# below are local-dev placeholders only — never commit real secrets here.
+name: processguard-ai
+
+services:
+  postgres:
+    # Postgres 16 + pgvector (stands in for Azure SQL; the vector extension
+    # is reused by the knowledge agent's store in Prompt 3+). Equivalent to
+    # postgres:16-alpine for this scaffold.
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: processguard
+      POSTGRES_USER: ${PGAI_DATABASE__USER:-pgai}
+      POSTGRES_PASSWORD: ${PGAI_DATABASE__PASSWORD:-pgai_dev_password}
+    ports:
+      # Host 5433: a local (non-Docker) Postgres often occupies 5432 on dev
+      # machines. Inside the compose network the container is still plain 5432.
+      - "5433:5432"
+    networks:
+      - internal
+      # The mock CMMS keeps its cmms_* tables in the same local Postgres
+      # (dev convenience); joining it to the CMMS network lets ONLY the
+      # mock-erp-cmms + agent-service reach Postgres over that segment.
+      - cmms
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pgai -d processguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Middleware runs migrations + demo seed FIRST; its /health/startup
+  # (200 only after both complete) gates the Python services below.
+  # ─────────────────────────────────────────────────────────────────────
+  middleware:
+    build: ./middleware
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Prompt 7: real OIDC (the dev-token JWT issuer from Prompt 1 is GONE).
+      # Authority is the in-network URL used to FETCH discovery metadata +
+      # JWKS; Issuer/InternalIssuer are the iss claim values accepted on
+      # tokens (in-network and host-published views of the same provider).
+      PGAI_OIDC__AUTHORITY: http://oidc-provider:8090
+      PGAI_OIDC__ISSUER: http://oidc-provider:8090
+      PGAI_OIDC__INTERNALISSUER: http://localhost:8090
+      PGAI_OIDC__AUDIENCE: processguard-frontend
+      PGAI_OIDC__REQUIREHTTPSMETADATA: "false"
+      # Role->capability table: EXTERNAL CONFIG shared verbatim with the
+      # Python agent-service (single source of truth, docs/rbac-policy.md).
+      PGAI_RBAC__POLICYFILE: /app/config/rbac-policy.json
+      PGAI_CONNECTIONSTRINGS__POSTGRES: Host=postgres;Port=5432;Database=processguard;Username=pgai;Password=${PGAI_DATABASE__PASSWORD:-pgai_dev_password}
+      PGAI_CONNECTIONSTRINGS__REDIS: ${PGAI_CONNECTIONSTRINGS__REDIS:-redis:6379}
+      PGAI_AGENTSERVICE__BASEURL: http://agent-service:8000
+      # Prompt 9: OpenTelemetry trace export
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - ./config/rbac-policy.json:/app/config/rbac-policy.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      oidc-provider:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    networks:
+      - internal
+      - frontend_net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v1/health/startup"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  agent-service:
+    build: ./agent-service
+    environment:
+      PGAI_SERVICE_NAME: processguard-agent-service
+      PGAI_LOG_LEVEL: INFO
+      PGAI_CORRELATION_HEADER: X-Correlation-Id
+      PGAI_DATABASE__HOST: postgres
+      PGAI_DATABASE__PORT: "5432"
+      PGAI_DATABASE__NAME: ${PGAI_DATABASE__NAME:-processguard}
+      PGAI_DATABASE__USER: ${PGAI_DATABASE__USER:-pgai}
+      PGAI_DATABASE__PASSWORD: ${PGAI_DATABASE__PASSWORD:-pgai_dev_password}
+      PGAI_REDIS__HOST: redis
+      PGAI_REDIS__PORT: "6379"
+      PGAI_REDIS__PASSWORD: ""
+      # Prompt 7: defense in depth -- the agent service re-validates every
+      # forwarded token itself (signature via the provider's JWKS, issuer,
+      # audience, lifetime); it does NOT blindly trust the middleware.
+      PGAI_OIDC__ISSUER: http://oidc-provider:8090
+      PGAI_OIDC__INTERNALISSUER: http://localhost:8090
+      PGAI_OIDC__AUDIENCE: processguard-frontend
+      PGAI_OIDC__JWKS_URL: http://oidc-provider:8090/jwks.json
+      # Same policy file as the middleware (mounted from the repo, one copy).
+      PGAI_RBAC__POLICYFILE: /app/config/rbac-policy.json
+      # LLM (Prompt 3): Groq stand-in for Azure OpenAI. GROQ_API_KEY comes
+      # from the repo-root .env; PGAI_LLM__FAKEMODE=true swaps in the
+      # deterministic scripted client for offline dev/demo rehearsal.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-llama-3.3-70b-versatile}
+      PGAI_LLM__FAKEMODE: ${PGAI_LLM__FAKEMODE:-true}
+      # Mock ERP/CMMS (Prompt 5): reachable only via the agent-service's
+      # second interface on the isolated `cmms` network. The API key is the
+      # SEPARATE credential that authorizes external writes — never reused
+      # from any other system (docs/security-model.md).
+      PGAI_CMMS__BASE_URL: http://mock-erp-cmms:8100
+      PGAI_CMMS__API_KEY: ${CMMS_API_KEY:-cmms-dev-key-change-me}
+    volumes:
+      - ./config/rbac-policy.json:/app/config/rbac-policy.json:ro
+    depends_on:
+      middleware:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mock-erp-cmms:
+        condition: service_healthy
+      oidc-provider:
+        condition: service_healthy
+    networks:
+      - internal
+      - cmms
+    ports:
+      # Host 8001: 8000 is commonly taken by other dev stacks. Inside the
+      # compose network the service is still plain 8000.
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  simulator:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile.simulator
+    environment:
+      PGAI_SERVICE_NAME: processguard-simulator
+      PGAI_LOG_LEVEL: INFO
+      PGAI_CORRELATION_HEADER: X-Correlation-Id
+      PGAI_DATABASE__HOST: postgres
+      PGAI_DATABASE__PORT: "5432"
+      PGAI_DATABASE__NAME: ${PGAI_DATABASE__NAME:-processguard}
+      PGAI_DATABASE__USER: ${PGAI_DATABASE__USER:-pgai}
+      PGAI_DATABASE__PASSWORD: ${PGAI_DATABASE__PASSWORD:-pgai_dev_password}
+      PGAI_REDIS__HOST: redis
+      PGAI_REDIS__PORT: "6379"
+      PGAI_REDIS__PASSWORD: ""
+      PGAI_SIMULATOR__INTERVAL_MIN_SECONDS: "2"
+      PGAI_SIMULATOR__INTERVAL_MAX_SECONDS: "5"
+      PGAI_SIMULATOR__RAMP_SECONDS: "30"
+      # Prompt 8: real-data mode. synthetic (default) = the Prompt 2 random-walk
+      # simulator (demo fallback, unchanged); tep_replay = real Tennessee
+      # Eastman Process data (Rieth et al., DOI 10.7910/DVN/6C3JR1) streamed
+      # into the SAME "sensor-readings" stream. Flip with:
+      #   SENSOR_DATA_SOURCE=tep_replay docker compose up -d simulator
+      # (docs/real-data-sources.md). The replay data lives on the host under
+      # data/tep/ -- run scripts/download_tep_data.py first; without it the
+      # engine falls back to its tiny embedded real-data excerpt and warns.
+      # Prompt 8: real-data mode. synthetic (default) = the Prompt 2 random-walk
+      # simulator (demo fallback, unchanged); tep_replay = real Tennessee
+      # Eastman Process data (Rieth et al., DOI 10.7910/DVN/6C3JR1) streamed
+      # into the SAME "sensor-readings" stream. Flip with:
+      #   SENSOR_DATA_SOURCE=tep_replay docker compose up -d simulator
+      # (docs/real-data-sources.md). The replay data lives on the host under
+      # data/tep/ -- run scripts/download_tep_data.py first; without it the
+      # engine falls back to its tiny embedded real-data excerpt and warns.
+      SENSOR_DATA_SOURCE: ${SENSOR_DATA_SOURCE:-synthetic}
+      PGAI_TEP__TICK_SECONDS: ${PGAI_TEP__TICK_SECONDS:-3}
+      PGAI_TEP__SKIP_FRACTION: ${PGAI_TEP__SKIP_FRACTION:-0.5}
+      PGAI_TEP__DATA_DIR: /app/data/tep
+      # Prompt 9: observability
+      PGAI_OTEL__EXPORTER_URL: http://otel-collector:4317
+      PGAI_OTEL__DISABLE: ${PGAI_OTEL__DISABLE:-false}
+    volumes:
+      - ./data/tep:/app/data/tep:ro
+    depends_on:
+      middleware:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - internal
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Mock ERP/CMMS (Prompt 5) — stand-in for Buckman's real ERP/CMMS.
+  # SECURITY: attached ONLY to the internal `cmms` network together with
+  # the agent-service. The frontend, middleware, and the host have NO route
+  # to it — enforced by Docker networking, not by convention (try it: the
+  # mock CMMS is unreachable from every other container and from localhost).
+  # All CMMS interaction is mediated by the Action Agent.
+  # ─────────────────────────────────────────────────────────────────────
+  mock-erp-cmms:
+    build: ./mock-erp-cmms
+    environment:
+      CMMS_API_KEY: ${CMMS_API_KEY:-cmms-dev-key-change-me}
+      PGAI_DATABASE__HOST: postgres
+      PGAI_DATABASE__PORT: "5432"
+      PGAI_DATABASE__NAME: ${PGAI_DATABASE__NAME:-processguard}
+      PGAI_DATABASE__USER: ${PGAI_DATABASE__USER:-pgai}
+      PGAI_DATABASE__PASSWORD: ${PGAI_DATABASE__PASSWORD:-pgai_dev_password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # ONLY the isolated CMMS segment. postgres joins this network too (the
+    # CMMS keeps its cmms_* tables there); NOTHING else does -- the frontend,
+    # middleware, and simulator cannot resolve or reach the CMMS at all.
+    networks:
+      - cmms
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health/live', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  frontend:
+    build: ./frontend
+    environment:
+      # Runtime OIDC config injected into the built bundle by the nginx
+      # entrypoint (frontend/docker-entrypoint.d/40-oidc-config.sh):
+      # the BROWSER always uses the same-origin /oidc proxy (nginx.conf),
+      # so no host-published port or CORS is involved in the login flow.
+      OIDC_BROWSER_AUTHORITY: /oidc
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-processguard-frontend}
+    depends_on:
+      - middleware
+    networks:
+      - frontend_net
+    ports:
+      - "5173:8080"
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Local OIDC provider (Prompt 7) — PROTOCOL-COMPATIBLE stand-in for
+  # Microsoft Entra ID. Standard discovery/JWKS/authorize/token endpoints;
+  # seeded demo users with role + site claims (docs/auth-flow.md). The
+  # middleware + agent-service validate tokens against its JWKS in-network;
+  # the host-published port exists for the browser dev path and the test
+  # suites only. DEV/DEMO TOOLING -- never ship to staging/prod.
+  # ─────────────────────────────────────────────────────────────────────
+  oidc-provider:
+    build: ./oidc-provider
+    environment:
+      OIDC_ISSUER: http://oidc-provider:8090
+      OIDC_ISSUER_INTERNAL: http://localhost:8090
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-processguard-frontend}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-processguard-frontend-secret}
+      OIDC_API_KEY: ${OIDC_API_KEY:-oidc-dev-key-change-me}
+      OIDC_ACCESS_TOKEN_MINUTES: "60"
+    ports:
+      - "8090:8090"
+    networks:
+      - internal
+      - frontend_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health/live', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Prompt 9: observability stack (stand-in for Azure Monitor +
+  # Application Insights). Prometheus scrapes the /metrics endpoints on the
+  # middleware and agent-service; OTLP collector receives traces; Grafana
+  # visualizes; Alertmanager handles alert routing.
+  # ─────────────────────────────────────────────────────────────────────
+  otel-collector:
+    image: otel/opentelemetry-collector:0.110.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"   # OTLP gRPC (traces + metrics)
+      - "4318:4318"   # OTLP HTTP
+      - "6831:6831/udp" # OTLP legacy (zipkin-compatible, optional)
+      - "8888:8888"   # Prometheus metrics from the collector itself
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting:/etc/prometheus/rules:ro
+    networks:
+      - internal
+    depends_on:
+      - postgres
+      - redis
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=168h"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting:/etc/prometheus/rules:ro
+    networks:
+      - internal
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_DATASOURCES_DEFAULTS_URL: http://prometheus:9090
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - internal
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - alertmanager-data:/alertmanager
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - internal
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  redisdata:
+  prometheus-data:
+  grafana-data:
+  alertmanager-data:
+
+networks:
+  # Backend services + postgres + redis. NOT joined by the frontend or the
+  # mock CMMS.
+  internal:
+    driver: bridge
+  # CMMS segment: agent-service + mock-erp-cmms + postgres (the CMMS keeps
+  # its cmms_* tables in the shared dev Postgres). The frontend, middleware,
+  # and simulator NEVER join this network, so the mock CMMS is unreachable
+  # from them and from the host (no published ports either).
+  cmms:
+    driver: bridge
+  # Frontend segment: frontend + middleware only.
+  frontend_net:
+    driver: bridge

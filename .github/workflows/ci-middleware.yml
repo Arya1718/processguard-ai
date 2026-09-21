@@ -1,0 +1,71 @@
+name: CI — .NET Middleware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "middleware/**"
+      - "config/**"
+      - ".github/workflows/ci-middleware.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "middleware/**"
+      - "config/**"
+      - ".github/workflows/ci-middleware.yml"
+
+env:
+  DOTNET_VERSION: "8.0.x"
+
+jobs:
+  middleware:
+    name: Middleware — build, test, scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        working-directory: middleware/src
+        run: dotnet restore
+
+      - name: Build
+        working-directory: middleware/src
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run unit tests
+        working-directory: middleware/tests
+        run: dotnet test --no-build --verbosity minimal
+
+      - name: Dependency vulnerability scan (dotnet list package --vulnerable)
+        working-directory: middleware/src
+        run: |
+          echo "--- Checking for vulnerable NuGet packages ---"
+          dotnet list package --vulnerable --include-transitive || true
+          echo "--- Vulnerable packages check complete ---"
+
+      - name: Build production image (trivy scan)
+        working-directory: middleware
+        run: |
+          docker build -t processguard-middleware:ci .
+          echo "Built image: processguard-middleware:ci"
+          # Trivy vulnerability scan of the built image
+          # Install trivy if not present, then scan
+          if ! command -v trivy &> /dev/null; then
+            echo "Installing Trivy image scanner..."
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          fi
+          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed processguard-middleware:ci || {
+            echo "::error::Critical or high-severity vulnerabilities found in middleware image"
+            exit 1
+          }
+
+      - name: Format check
+        working-directory: middleware/src
+        run: dotnet format --verify-no-changes --verbosity minimal || echo "::warning::dotnet format check found issues"

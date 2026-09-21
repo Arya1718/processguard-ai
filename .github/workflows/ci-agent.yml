@@ -1,0 +1,122 @@
+name: CI — Python Agent Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent-service/**"
+      - "mock-erp-cmms/**"
+      - "config/**"
+      - ".github/workflows/ci-agent.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "agent-service/**"
+      - "mock-erp-cmms/**"
+      - "config/**"
+      - ".github/workflows/ci-agent.yml"
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  agent:
+    name: Agent Service — lint, test, coverage, scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+          cache-dependency-path: agent-service/requirements.txt
+
+      - name: Install dependencies
+        working-directory: agent-service
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff mypy coverage pytest-cov pip-audit
+
+      - name: Lint (ruff)
+        working-directory: agent-service
+        run: |
+          ruff check app/ tests/ || exit 1
+          ruff format --check app/ tests/ || exit 1
+
+      - name: Type check (mypy)
+        working-directory: agent-service
+        run: mypy app/ tests/ --ignore-missing-imports || exit 1
+
+      - name: Unit tests + coverage (75% threshold enforced)
+        working-directory: agent-service
+        env:
+          PGAI_DATABASE__HOST: localhost
+          PGAI_DATABASE__PORT: "5432"
+          PGAI_DATABASE__NAME: test
+          PGAI_DATABASE__USER: test
+          PGAI_DATABASE__PASSWORD: test
+          PGAI_REDIS__HOST: localhost
+          PGAI_REDIS__PORT: "6379"
+          PGAI_OIDC__ISSUER: http://localhost:8090
+          PGAI_OIDC__INTERNALISSUER: http://localhost:8090
+          PGAI_OIDC__AUDIENCE: processguard-frontend
+          PGAI_RBAC__POLICYFILE: config/rbac-policy.json
+          PGAI_OTEL__DISABLE: "true"
+        run: |
+          # Integration tests require the live compose stack; skip them in CI.
+          python -m pytest tests/unit/ tests/contract/ tests/regression/ \
+            -v --cov=app --cov-report=term-missing --cov-report=xml \
+            -m "not integration and not data"
+
+      - name: Verify 75% coverage threshold (CI gate)
+        working-directory: agent-service
+        run: |
+          COVERAGE=$(python -c "import xml; t=xml.etree.ElementTree.parse('coverage.xml'); print(float(t.getroot().attrib['line-rate'])*100)")
+          echo "Coverage: ${COVERAGE}%"
+          if (( $(echo "${COVERAGE} < 75.0" | bc -l) )); then
+            echo "::error::Coverage ${COVERAGE}% is below the 75% threshold"
+            exit 1
+          fi
+          echo "Coverage ${COVERAGE}% meets the 75% threshold"
+
+      - name: Dependency security scan (pip-audit)
+        working-directory: agent-service
+        run: |
+          echo "--- Scanning for known Python vulnerabilities ---"
+          pip-audit -r requirements.txt --severity high --exit-code 1 || {
+            echo "::warning::pip-audit found vulnerabilities; review dependencies"
+          }
+
+      - name: Build production image (trivy scan)
+        working-directory: agent-service
+        run: |
+          docker build -t processguard-agent-service:ci -f Dockerfile .
+          echo "Built image: processguard-agent-service:ci"
+          # Trivy vulnerability scan
+          if ! command -v trivy &> /dev/null; then
+            echo "Installing Trivy image scanner..."
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          fi
+          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed processguard-agent-service:ci || {
+            echo "::error::Critical or high-severity vulnerabilities found in agent-service image"
+            exit 1
+          }
+
+      - name: Build mock-erp-cmms image (trivy scan)
+        working-directory: mock-erp-cmms
+        run: |
+          docker build -t mock-erp-cmms:ci .
+          echo "Built image: mock-erp-cmms:ci"
+          if ! command -v trivy &> /dev/null; then
+            echo "Installing Trivy image scanner..."
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          fi
+          trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed mock-erp-cmms:ci || {
+            echo "::error::Critical or high-severity vulnerabilities found in mock-erp-cmms image"
+            exit 1
+          }

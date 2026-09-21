@@ -1,0 +1,143 @@
+# Production environment overrides for ProcessGuard AI.
+# Used by CI/CD: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Requires HTTPS termination at the ingress layer; internal services use http.
+# Secrets are injected via .env from GitHub Secrets (staging/prod) or Azure Key
+# Vault via managed identity in a real Azure deployment.
+
+services:
+  middleware:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/middleware:${GITHUB_SHA:-latest}
+    build: null
+    ports:
+      - "80:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      PGAI_OIDC__REQUIREHTTPSMETADATA: "true"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/v1/health/startup"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    # Restart policy for production resilience
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+  agent-service:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/agent-service:${GITHUB_SHA:-latest}
+    build: null
+    ports:
+      - "8000:8000"
+    environment:
+      PGAI_OTEL__DISABLE: "false"
+      PGAI_LLM__FAKEMODE: "false"
+    restart: unless-stopped
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+  simulator:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/agent-service:${GITHUB_SHA:-latest}
+    build: null
+    command: ["--simulator-only"]
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/frontend:${GITHUB_SHA:-latest}
+    build: null
+    ports:
+      - "443:8080"
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+  mock-erp-cmms:
+    image: ghcr.io/${GITHUB_REPOSITORY:-processguard-ai}/mock-erp-cmms:${GITHUB_SHA:-latest}
+    build: null
+    restart: unless-stopped
+
+  # Production observability: longer retention, separate data volumes
+  otel-collector:
+    image: otel/opentelemetry-collector:0.110.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - otel-data:/etc/otel-collector-config.yaml:ro
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting:/etc/prometheus/rules:ro
+    networks:
+      - internal
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=720h"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data-prod:/prometheus
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/alerting:/etc/prometheus/rules:ro
+    networks:
+      - internal
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data-prod:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - internal
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - alertmanager-data-prod:/alertmanager
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./config/alerting/prod:/etc/prometheus/rules:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    networks:
+      - internal
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data-prod:
+  grafana-data-prod:
+  alertmanager-data-prod:
+  otel-data:

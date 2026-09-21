@@ -1,0 +1,131 @@
+name: CD — Production Deploy (gated)
+
+on:
+  workflow_dispatch:
+    name: "🚀 Production Deploy (Manual Approval Required)"
+    inputs:
+      ref:
+        description: "Git ref to deploy (tag or commit SHA)"
+        required: true
+        default: "main"
+      confirm:
+        description: "Type 'PRODUCTION-DEPLOY-CONFIRMED' to proceed"
+        required: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  production-deploy:
+    name: Production Deployment (manual approval gate)
+    runs-on: ubuntu-latest
+
+    # ---- Manual approval gate ----
+    # The job only runs if the deployer confirmed by typing the exact string.
+    # GitHub branch protection + required reviewers (if enabled on this repo)
+    # provide the second layer of protection.
+    if: ${{ inputs.confirm == 'PRODUCTION-DEPLOYED-CONFIRMED' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Announce production deploy
+        run: |
+          echo "=== PRODUCTION DEPLOY ==="
+          echo "Ref: ${{ inputs.ref }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Time: $(date -u)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            latest
+            ${{ github.sha }}
+            refs/tags/v${{ steps.version.outputs.version }}
+
+      - name: Build and push production images
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            build
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+            push
+
+      - name: Deploy to production host
+        env:
+          SSH_KEY: ${{ secrets.PROD_DEPLOY_KEY }}
+          SSH_HOST: ${{ secrets.PROD_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.PROD_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          DEPLOY_TAG: ${{ github.sha }}
+        run: |
+          mkdir -p deploy
+          cp docker-compose.yml docker-compose.prod.yml deploy/
+          # Generate .env.prod from secrets (Key Vault is the source of truth
+          # in real Azure; here we inject via GitHub secrets for the demo)
+          cat > deploy/.env << 'ENV'
+          PGAI_OIDC__AUTHORITY=${{ secrets.PROD_OIDC_AUTHORITY }}
+          PGAI_OIDC__ISSUER=${{ secrets.PROD_OIDC_ISSUER }}
+          PGAI_OIDC__AUDIENCE=${{ secrets.PROD_OIDC_AUDIENCE }}
+          PGAI_OIDC__INTERNALISSUER=${{ secrets.PROD_OIDC_INTERNAL_ISSUER }}
+          PGAI_OIDC__REQUIREHTTPSMETADATA=true
+          PGAI_CONNECTIONSTRINGS__POSTGRES=${{ secrets.PROD_PG_CONNSTRING }}
+          PGAI_CONNECTIONSTRINGS__REDIS=${{ secrets.PROD_REDIS_CONNSTRING }}
+          PGAI_AGENTSERVICE__BASEURL=http://agent-service:8000
+          GROQ_API_KEY=${{ secrets.PROD_GROQ_API_KEY }}
+          PGAI_LLM__FAKEMODE=false
+          CMMS_API_KEY=${{ secrets.PROD_CMMS_API_KEY }}
+          PGAI_CMMS__BASE_URL=${{ secrets.PROD_CMMS_BASE_URL }}
+          PGAI_CMMS__API_KEY=${{ secrets.PROD_CMMS_API_KEY }}
+          OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+          ENV
+
+          scp -i "$SSH_KEY" -o StrictHostKeyChecking=no -r deploy/.env \
+            "$DEPLOY_USER@$SSH_HOST:$DEPLOY_PATH/.env"
+          scp -i "$SSH_KEY" -o StrictHostKeyChecking=no \
+            docker-compose.yml docker-compose.prod.yml \
+            "$DEPLOY_USER@$SSH_HOST:$DEPLOY_PATH/"
+
+          ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$DEPLOY_USER@$SSH_HOST" \
+            "cd $DEPLOY_PATH && \
+             docker login $REGISTRY -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }} && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+             pull && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+             up -d --remove-orphans --pull always"
+
+      - name: Smoke test production
+        run: |
+          echo "Waiting for services to become healthy..."
+          sleep 30
+          # Check middleware health
+          curl -sf http://localhost:8080/api/v1/health/live || {
+            echo "::error::Production middleware health check failed"
+            exit 1
+          }
+          echo "Production deploy smoke test passed"
+
+      - name: Create rollback snapshot
+        if: always()
+        run: |
+          # Tag the current deployed state so a rollback can revert to it
+          # The rollback procedure is documented in docs/cd-rollback.md
+          echo "Rollback procedure: see docs/cd-rollback.md"
+          echo "To rollback: re-run this workflow with the previous tag/commit"

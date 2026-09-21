@@ -1,0 +1,29 @@
+# ProcessGuard AI -- sensor simulator image
+# Same application code as the agent service; different entry point.
+FROM python:3.11-slim AS build
+
+WORKDIR /build
+
+COPY requirements.txt .
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS final
+
+RUN groupadd -r pgai && useradd -r -g pgai pgai
+
+WORKDIR /app
+
+COPY --from=build /opt/venv /opt/venv
+COPY app ./app
+COPY simulator_main.py .
+
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER pgai
+
+CMD ["python", "simulator_main.py"]

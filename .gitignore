@@ -1,0 +1,51 @@
+# --- .NET ---
+middleware/bin/
+middleware/obj/
+middleware/**/bin/
+middleware/**/obj/
+*.user
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+
+# --- Node ---
+node_modules/
+frontend/dist/
+*.local
+
+# --- Env & secrets (never commit real values) ---
+.env
+.env.*
+!.env.example
+
+# --- IDE / OS ---
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Build artifacts / misc ---
+*.swp
+coverage/
+.coverage
+*.coverage
+TestResults/
+test-results/
+.freebuff/
+
+# K6 cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# TEP dataset (Prompt 8): large, re-downloadable via scripts/download_tep_data.py
+data/

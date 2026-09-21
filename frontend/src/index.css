@@ -1,0 +1,264 @@
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+  color: #1c2733;
+  background: #eef1f4;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; min-height: 100vh; }
+
+.muted { color: #5b6b7b; }
+.small { font-size: 0.8rem; }
+.error { color: #b42318; margin-top: 0.75rem; font-size: 0.9rem; }
+.ok { color: #067647; font-weight: 600; }
+
+/* ---------------------------------------------------------------- layout */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.app-main { max-width: 1200px; width: 100%; margin: 0 auto; padding: 1.25rem 1.25rem 4rem; }
+
+/* ---------------------------------------------------------------- header */
+.app-header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem;
+  background: #10222f; color: #f2f6f9; padding: 0.6rem 1.25rem;
+}
+.app-header-brand { display: flex; align-items: center; gap: 0.6rem; }
+.brand-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 8px;
+  background: #0f62fe; color: white; font-weight: 700; font-size: 0.85rem;
+}
+.brand-mark-large { width: 52px; height: 52px; font-size: 1.2rem; margin-bottom: 0.75rem; }
+.brand-title { font-weight: 700; font-size: 1.02rem; }
+.brand-sub { font-size: 0.72rem; color: #9fb4c4; }
+.app-header-site { display: flex; flex-direction: column; margin-left: auto; }
+.site-label, .user-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #9fb4c4; }
+.site-name { font-size: 0.88rem; font-weight: 600; }
+.app-header-user { display: flex; align-items: center; gap: 0.6rem; }
+.user-name { font-size: 0.88rem; font-weight: 600; }
+
+/* ---------------------------------------------------------------- cards */
+.card {
+  background: #ffffff; border: 1px solid #dde3e9; border-radius: 10px;
+  padding: 1.25rem 1.4rem; margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(16, 32, 48, 0.06);
+}
+.card h2 { margin-top: 0; font-size: 1.1rem; }
+.card h3 { margin: 0 0 0.4rem; font-size: 0.98rem; }
+
+/* ---------------------------------------------------------------- badges */
+.badge {
+  display: inline-block; padding: 0.16rem 0.55rem; border-radius: 999px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap;
+}
+.tone-info { background: #e0ecff; color: #0b4bc7; }
+.tone-ok { background: #d8f3e3; color: #067647; }
+.tone-warn { background: #fff0cf; color: #8a5a00; }
+.tone-danger { background: #fde3e1; color: #b42318; }
+.tone-muted { background: #e7ebef; color: #46545f; }
+
+.severity {
+  display: inline-block; padding: 0.12rem 0.5rem; border-radius: 5px;
+  font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em;
+  margin-left: 0.55rem;
+}
+
+/* ---------------------------------------------------------------- buttons */
+button {
+  padding: 0.5rem 1rem; border: none; border-radius: 6px;
+  background: #0f62fe; color: white; font-size: 0.9rem; cursor: pointer;
+}
+button:hover { background: #0353e9; }
+button:disabled { background: #7fa7f7; cursor: wait; }
+.btn-secondary { background: #5b6b7b; font-size: 0.8rem; padding: 0.35rem 0.8rem; }
+.btn-secondary:hover { background: #46545f; }
+.btn-danger { background: #b42318; }
+.btn-danger:hover { background: #92190f; }
+.btn-approve { background: #067647; }
+.btn-approve:hover { background: #055c37; }
+.btn-reject { background: #b42318; }
+.btn-reject:hover { background: #92190f; }
+
+label { display: block; margin: 0.75rem 0 0.25rem; font-size: 0.88rem; color: #33424f; }
+input, textarea {
+  width: 100%; padding: 0.5rem 0.65rem; border: 1px solid #c3cdd6;
+  border-radius: 6px; font-size: 0.92rem; font-family: inherit;
+}
+textarea { resize: vertical; }
+
+code, pre { background: #eef1f4; border-radius: 5px; font-size: 0.8rem; }
+code { padding: 0.08rem 0.3rem; }
+
+/* ---------------------------------------------------------------- login */
+.login-screen {
+  min-height: 100vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 1rem;
+}
+.login-brand { text-align: center; margin-bottom: 1rem; }
+.login-brand h1 { margin: 0.25rem 0; font-size: 1.5rem; }
+.login-form { width: 100%; max-width: 420px; }
+
+/* ---------------------------------------------------------------- feed */
+.feed-header { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem; margin-bottom: 0.9rem; }
+.feed-header h2 { margin: 0; font-size: 1.25rem; }
+.feed-sub { margin: 0.15rem 0 0; color: #5b6b7b; font-size: 0.85rem; }
+.feed-controls { margin-left: auto; display: flex; gap: 0.5rem; }
+.action-note { background: #e0ecff; border: 1px solid #b9d2f7; color: #0b4bc7; border-radius: 8px; padding: 0.55rem 0.8rem; font-size: 0.88rem; }
+.feed-empty { text-align: center; color: #5b6b7b; }
+.incident-list { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.incident-card {
+  display: flex; align-items: center; gap: 1rem; width: 100%; text-align: left;
+  background: #ffffff; border: 1px solid #dde3e9; border-radius: 10px;
+  padding: 0.8rem 1rem; color: inherit; font-size: 0.92rem;
+  box-shadow: 0 1px 3px rgba(16, 32, 48, 0.06);
+}
+.incident-card:hover { border-color: #0f62fe; background: #f6f9ff; }
+.incident-card-main { flex: 1; min-width: 0; }
+.incident-card-title { font-weight: 700; display: flex; align-items: center; flex-wrap: wrap; }
+.incident-card-sub { color: #5b6b7b; font-size: 0.82rem; margin-top: 0.15rem; }
+.incident-card-side { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; }
+.incident-time { font-size: 0.75rem; color: #5b6b7b; }
+
+/* ---------------------------------------------------------------- timeline */
+.timeline-header { display: flex; align-items: flex-start; gap: 1rem; }
+.timeline-header h2 { margin: 0 0 0.2rem; }
+.timeline-header .badge { margin-top: 0.3rem; margin-left: auto; }
+
+.state-strip ol { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; row-gap: 0.35rem; }
+.state-entry { display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.85rem; }
+.state-arrow { color: #9fb4c4; }
+.state-to { font-weight: 700; }
+.state-when { color: #5b6b7b; font-size: 0.78rem; }
+.state-actor { color: #0b4bc7; font-size: 0.78rem; }
+.state-reason { color: #8a5a00; font-size: 0.78rem; }
+
+.timeline-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1rem; align-items: start; }
+@media (max-width: 980px) { .timeline-grid { grid-template-columns: 1fr; } }
+.timeline-side { position: sticky; top: 1rem; }
+
+.stage-title { font-size: 0.95rem; }
+.stage-subtitle { margin: 0 0 0.7rem; font-size: 0.8rem; }
+
+/* ---------------------------------------------------------------- sensors */
+.sensor-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+.sensor-row-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem; font-size: 0.88rem; }
+.sensor-values { color: #33424f; font-variant-numeric: tabular-nums; }
+.sensor-bar { position: relative; height: 10px; margin: 0.4rem 0 0.2rem; background: #eef1f4; border-radius: 5px; overflow: visible; }
+.sensor-band { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: #d8f3e3; border-radius: 5px; }
+.sensor-marker {
+  position: absolute; top: -4px; width: 8px; height: 18px; border-radius: 3px;
+  background: #b42318; transform: translateX(-50%);
+}
+.sensor-bar-out .sensor-band { background: #fff0cf; }
+.sensor-why { font-size: 0.8rem; color: #5b6b7b; }
+
+/* ---------------------------------------------------------------- evidence */
+.panel-subhead { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5b6b7b; margin: 0.9rem 0 0.4rem; }
+.panel-subhead:first-child { margin-top: 0; }
+.evidence-item { border: 1px solid #e4e9ee; border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.55rem; }
+.evidence-item-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.evidence-score { margin-left: auto; font-size: 0.75rem; color: #5b6b7b; }
+.evidence-excerpt { margin: 0.5rem 0 0; padding: 0.4rem 0.7rem; background: #f6f8fa; border-left: 3px solid #0f62fe; font-size: 0.82rem; white-space: pre-wrap; }
+.evidence-body { margin-top: 0.45rem; font-size: 0.84rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.field-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: #5b6b7b; margin-right: 0.3rem; }
+.history-outcome { color: #067647; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; }
+
+/* ---------------------------------------------------------------- citations */
+.citation-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  border: 1px solid #c3cdd6; border-radius: 999px;
+  padding: 0.1rem 0.55rem 0.1rem 0.4rem; margin: 0.1rem 0.25rem 0.1rem 0;
+  font-size: 0.72rem; background: #f6f8fa; cursor: pointer;
+}
+.citation-chip:hover { border-color: #0f62fe; background: #eef4ff; }
+.citation-sop { background: #e0ecff; border-color: #b9d2f7; }
+.citation-history { background: #f3ecff; border-color: #d9c8f5; }
+.citation-sensor { background: #fff6e6; border-color: #f0d9a8; }
+.citation-glyph { font-weight: 700; }
+.citation-ref { font-weight: 600; }
+.citation-kind { color: #5b6b7b; }
+
+/* Prompt 8 provenance badges: the public_real vs illustrative distinction
+   must be VISIBLE on every citation, never implied. */
+.provenance-badge {
+  font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.03em; border-radius: 999px; padding: 0.02rem 0.4rem;
+}
+.provenance-public {
+  background: #0f62fe; color: #fff;
+  /* a real public source is linkable evidence */
+}
+.provenance-illustrative {
+  background: transparent; color: #5b6b7b;
+  border: 1px solid #c3cdd6;
+}
+.citation-link { color: inherit; text-decoration: underline; }
+.citation-chip.citation-linked { border-color: #0f62fe; }
+
+/* ---------------------------------------------------------------- root cause */
+.hypothesis { font-size: 0.98rem; margin: 0 0 0.6rem; }
+.confidence {
+  display: inline-block; background: #10222f; color: #fff; border-radius: 6px;
+  padding: 0.1rem 0.5rem; font-size: 0.78rem; font-weight: 700; margin-left: 0.3rem;
+}
+.cited-points { list-style: none; margin: 0; padding: 0; }
+.cited-point { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem 0; border-top: 1px dashed #e4e9ee; font-size: 0.88rem; }
+.cited-point:first-child { border-top: none; }
+.point-citations { display: flex; flex-wrap: wrap; }
+.needs-review { background: #fff0cf; border: 1px solid #f0d9a8; border-radius: 8px; padding: 0.7rem 0.9rem; color: #8a5a00; font-weight: 600; }
+
+/* ---------------------------------------------------------------- risk */
+.risk-line { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; margin: 0 0 0.4rem; }
+.risk-sep { color: #9fb4c4; }
+.consequences { margin: 0.2rem 0; padding-left: 1.1rem; font-size: 0.88rem; }
+.consequence-why { color: #5b6b7b; font-size: 0.82rem; }
+.hitl-why { background: #f6f8fa; border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.86rem; margin: 0.6rem 0 0; }
+
+/* ---------------------------------------------------------------- recommendation */
+.recommended-actions { margin: 0 0 0.6rem; padding-left: 1.2rem; }
+.recommended-actions li { margin-bottom: 0.35rem; font-size: 0.92rem; }
+.action-detail { display: block; margin-top: 0.15rem; }
+.rationale { background: #f6f8fa; border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.9rem; }
+.tool-log { margin-top: 0.8rem; border: 1px solid #e4e9ee; border-radius: 8px; padding: 0.55rem 0.8rem; background: #fbfcfd; }
+.tool-log summary { cursor: pointer; font-size: 0.85rem; font-weight: 600; color: #33424f; }
+.tool-log-list { margin: 0.6rem 0 0.2rem; padding-left: 1.2rem; font-size: 0.82rem; }
+.tool-log-entry { margin-bottom: 0.6rem; }
+.tool-log-head { display: flex; gap: 0.6rem; align-items: baseline; }
+.tool-name { font-weight: 700; }
+.tool-when { margin-left: auto; color: #5b6b7b; font-size: 0.75rem; }
+.tool-log-io { display: flex; flex-direction: column; gap: 0.15rem; margin-top: 0.2rem; word-break: break-word; }
+.tool-result { white-space: pre-wrap; }
+
+/* ---------------------------------------------------------------- approval */
+.approval-buttons { display: flex; gap: 0.6rem; }
+.approval-note { color: #5b6b7b; font-size: 0.8rem; margin: 0.55rem 0 0; }
+.reject-box { margin-top: 0.7rem; border: 1px solid #f0d9a8; background: #fffaf0; border-radius: 8px; padding: 0.7rem 0.9rem; }
+.reject-actions { display: flex; gap: 0.5rem; margin-top: 0.6rem; }
+.decision-record { font-size: 0.92rem; margin: 0; }
+
+/* ---------------------------------------------------------------- action */
+.action-line { font-size: 0.88rem; margin: 0 0 0.5rem; }
+.action-ops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.action-op { border: 1px solid #e4e9ee; border-radius: 8px; padding: 0.55rem 0.8rem; font-size: 0.86rem; }
+.action-op-head { display: flex; align-items: baseline; gap: 0.6rem; }
+.op-kind { font-weight: 700; }
+.op-outcome { margin-left: auto; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em; }
+.op-outcome.ok { color: #067647; }
+.op-outcome.failed { color: #b42318; }
+.op-reference { margin-top: 0.3rem; }
+.op-detail { margin-top: 0.25rem; word-break: break-word; }
+.resolve-box { margin-top: 0.7rem; border: 1px solid #c3cdd6; border-radius: 8px; padding: 0.7rem 0.9rem; background: #fbfcfd; }
+
+/* ---------------------------------------------------------------- chat */
+.chat-panel { display: flex; flex-direction: column; gap: 0.6rem; }
+.chat-empty { font-size: 0.84rem; }
+.chat-messages { display: flex; flex-direction: column; gap: 0.5rem; max-height: 420px; overflow-y: auto; }
+.chat-message { border-radius: 8px; padding: 0.5rem 0.7rem; font-size: 0.88rem; }
+.chat-user { background: #e0ecff; align-self: flex-end; max-width: 90%; }
+.chat-assistant { background: #f6f8fa; border: 1px solid #e4e9ee; }
+.chat-answer { white-space: pre-wrap; }
+.chat-citations { margin-top: 0.4rem; display: flex; flex-wrap: wrap; }
+.chat-form { display: flex; gap: 0.5rem; }
+.chat-form input { flex: 1; }
