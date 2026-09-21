@@ -107,9 +107,9 @@ curl -X POST http://localhost:8001/api/v1/simulator/reset
 | AlertManager | http://localhost:9093 | Alert routing |
 | OTel Collector | http://localhost:4317 | Trace/metrics collection |
 
-## What's built (11 prompts, complete)
+## What's built 
 
-| Prompt | Deliverable | Status |
+| Sno | Deliverable | Status |
 |---|---|---|
 | 1 | Scaffold: three-tier stack, health endpoints, correlation IDs, fail-fast config | ✅ |
 | 2 | Sensor simulator + Detection Agent: correlated multi-sensor anomaly detection, Redis Stream ingestion | ✅ |
